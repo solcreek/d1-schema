@@ -61,7 +61,8 @@ export function createMockD1(): D1Database {
     async batch(stmts: D1PreparedStatement[]) {
       const results = [];
       for (const s of stmts) {
-        results.push(await s.run());
+        // D1 batch returns D1Result for each statement — use .all() to get results
+        results.push(await s.all());
       }
       return results;
     },

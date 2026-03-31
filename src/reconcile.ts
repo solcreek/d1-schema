@@ -18,13 +18,21 @@ export async function computeOperations(
   const operations: DdlOperation[] = [];
   const warnings: string[] = [];
 
-  for (const [tableName, columns] of Object.entries(schema)) {
+  const tableNames = Object.keys(schema);
+
+  // Batch all PRAGMA queries in a single D1 roundtrip
+  const pragmaResults = await db.batch(
+    tableNames.map((name) =>
+      db.prepare(`PRAGMA table_info(${escapeIdent(name)})`),
+    ),
+  );
+
+  for (let i = 0; i < tableNames.length; i++) {
+    const tableName = tableNames[i];
+    const columns = schema[tableName];
     const desired = parseTableDef(columns);
 
-    // Check if table exists
-    const existing = await db
-      .prepare(`PRAGMA table_info(${escapeIdent(tableName)})`)
-      .all<PragmaColumnInfo>();
+    const existing = pragmaResults[i] as D1Result<PragmaColumnInfo>;
 
     if (!existing.results || existing.results.length === 0) {
       // Table doesn't exist — CREATE
