@@ -7,7 +7,7 @@ import type {
   DdlOperation,
 } from "./types.js";
 import { parseTableDef } from "./parse.js";
-import { buildCreateTable, buildAddColumn, escapeIdent } from "./ddl.js";
+import { buildCreateTable, buildAddColumn, buildCreateIndex, escapeIdent } from "./ddl.js";
 
 /**
  * Compute the list of DDL operations needed to reconcile the desired schema
@@ -31,7 +31,15 @@ export async function computeOperations(
 
   for (let i = 0; i < tableNames.length; i++) {
     const tableName = tableNames[i];
-    const columns = schema[tableName];
+    const tableDef = schema[tableName];
+
+    // Extract _indexes before parsing columns
+    const indexes = tableDef._indexes ?? [];
+    const columns: Record<string, string> = {};
+    for (const [key, val] of Object.entries(tableDef)) {
+      if (key !== "_indexes") columns[key] = val as string;
+    }
+
     const desired = parseTableDef(columns);
 
     const existing = pragmaResults[i] as D1Result<PragmaColumnInfo>;
@@ -43,6 +51,14 @@ export async function computeOperations(
         action: "CREATE_TABLE",
         ddl: buildCreateTable(tableName, desired),
       });
+      // Create indexes for new table
+      for (const idx of indexes) {
+        operations.push({
+          table: tableName,
+          action: "CREATE_INDEX",
+          ddl: buildCreateIndex(tableName, idx),
+        });
+      }
       continue;
     }
 
@@ -172,6 +188,15 @@ export async function computeOperations(
             `d1-schema will not drop it. Remove manually if intended.`,
         );
       }
+    }
+
+    // Create indexes (idempotent — IF NOT EXISTS)
+    for (const idx of indexes) {
+      operations.push({
+        table: tableName,
+        action: "CREATE_INDEX",
+        ddl: buildCreateIndex(tableName, idx),
+      });
     }
   }
 

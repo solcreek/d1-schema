@@ -40,3 +40,17 @@ export function buildAddColumn(
 
   return `ALTER TABLE ${escapeIdent(tableName)} ADD COLUMN ${parts.join(" ")}`;
 }
+
+/**
+ * Build a CREATE INDEX IF NOT EXISTS statement.
+ * Index name is auto-generated: idx_{table}_{col1}_{col2}
+ */
+export function buildCreateIndex(
+  tableName: string,
+  columns: string,
+): string {
+  const cols = columns.split(",").map((c) => c.trim());
+  const indexName = `idx_${tableName}_${cols.join("_")}`;
+  const colList = cols.map((c) => escapeIdent(c)).join(", ");
+  return `CREATE INDEX IF NOT EXISTS ${escapeIdent(indexName)} ON ${escapeIdent(tableName)} (${colList})`;
+}

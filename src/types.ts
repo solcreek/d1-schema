@@ -1,5 +1,9 @@
-/** Schema definition: table name → column name → SQL column definition string. */
-export type SchemaDefinition = Record<string, Record<string, string>>;
+/**
+ * Schema definition: table name → column definitions.
+ * Column values are SQL column definition strings.
+ * Special key `_indexes`: array of index definitions (column name or "col1, col2").
+ */
+export type SchemaDefinition = Record<string, Record<string, string> & { _indexes?: string[] }>;
 
 /** Options for define(). */
 export interface DefineOptions {
