@@ -1,6 +1,6 @@
 {
   "name": "d1-schema",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Declarative schema for Cloudflare D1. Define tables in code, auto-created on first use.",
   "type": "module",
   "main": "./dist/index.js",
