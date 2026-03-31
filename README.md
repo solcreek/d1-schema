@@ -10,7 +10,29 @@ No migration files. No CLI. No schema config.
 npm install d1-schema
 ```
 
-## Usage
+## Quick Start
+
+### With Creek (zero config)
+
+```ts
+import { db } from "creek";
+
+db.define({
+  todos: {
+    id: "text primary key",
+    text: "text not null",
+    completed: "integer default 0",
+    created_at: "text default (datetime('now'))",
+  },
+});
+
+await db.query("SELECT * FROM todos");
+await db.mutate("INSERT INTO todos (id, text) VALUES (?, ?)", id, text);
+```
+
+Creek handles everything — database provisioning, bindings, realtime sync. Just `creek deploy`.
+
+### Standalone (any Cloudflare Worker)
 
 ```ts
 import { define } from "d1-schema";
@@ -26,14 +48,20 @@ export default {
       },
     });
 
-    // Use standard D1 queries — nothing special
     const todos = await env.DB.prepare("SELECT * FROM todos").all();
     return Response.json(todos.results);
   },
 };
 ```
 
-That's it. Tables are created on first request. No migration files, no CLI commands.
+Standalone usage requires a D1 binding in `wrangler.toml`:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "my-db"
+database_id = "<your-database-id>"  # from `wrangler d1 create my-db`
+```
 
 ## TypeScript API
 
@@ -60,32 +88,13 @@ try {
 }
 ```
 
-## Wrangler Setup
-
-`d1-schema` handles schema — you still need a D1 database binding in `wrangler.toml`:
-
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "my-db"
-database_id = "<your-database-id>"  # from `wrangler d1 create my-db`
-```
-
-```ts
-// Your Worker receives env.DB automatically
-export default {
-  async fetch(request: Request, env: { DB: D1Database }) {
-    await define(env.DB, { /* schema */ });
-  },
-};
-```
-
 ## How It Works
 
 - **First request**: tables created automatically (`CREATE TABLE IF NOT EXISTS`)
 - **Add a column**: add it to `define()`, applied on next deploy (`ALTER TABLE ADD COLUMN`)
 - **Remove a column**: warning logged, column kept in database (data safety)
 - **Schema unchanged**: skipped in <0.5ms (hash comparison, no DB query)
+- **Concurrent requests**: all DDL is idempotent — multiple Workers calling `define()` simultaneously are safe
 
 All operations are additive. `d1-schema` never drops columns or tables.
 
@@ -148,10 +157,7 @@ Add columns by adding them to `define()`. Existing data is preserved.
 ```ts
 // v1: initial schema
 await define(env.DB, {
-  users: {
-    id: "text primary key",
-    name: "text not null",
-  },
+  users: { id: "text primary key", name: "text not null" },
 });
 
 // v2: add columns — just redeploy
@@ -223,32 +229,26 @@ const prisma = new PrismaClient({ adapter: new PrismaD1(env.DB) });
 
 `d1-schema` and ORMs don't conflict. Use `define()` for table creation, your preferred ORM for queries.
 
-## With Creek
+## Local Development
 
-When using [Creek](https://creek.dev), `d1-schema` is built in:
-
-```ts
-import { db } from "creek";
-
-db.define({
-  todos: {
-    id: "text primary key",
-    text: "text not null",
-    completed: "integer default 0",
-  },
-});
-
-// Creek's db.query/db.mutate auto-broadcast changes to realtime clients
-await db.query("SELECT * FROM todos");
-await db.mutate("INSERT INTO todos (id, text) VALUES (?, ?)", id, text);
+**With Creek:**
+```bash
+creek dev    # D1 auto-provisioned locally via Miniflare, schema applied on first request
 ```
+
+**Standalone:**
+```bash
+wrangler dev    # Uses local SQLite file, schema applied on first request
+```
+
+Schema persists across restarts in both cases (SQLite file in `.wrangler/` or `.creek/dev/`).
 
 ## Limitations
 
 `d1-schema` is intentionally additive-only. It does **not** support:
 
 - **Column drops** — removing a column from `define()` logs a warning, never drops
-- **Column renames** — rename requires manual SQL (`ALTER TABLE` not supported in SQLite for renames)
+- **Column renames** — rename requires manual SQL
 - **Type changes** — changing a column type logs a warning, never alters
 - **Down-migrations / rollback** — no undo mechanism
 - **Composite primary keys** — use single-column primary keys
