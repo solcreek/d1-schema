@@ -1,5 +1,10 @@
 # d1-schema
 
+[![npm](https://img.shields.io/npm/v/d1-schema)](https://www.npmjs.com/package/d1-schema)
+[![tests](https://img.shields.io/badge/tests-102%20passed-brightgreen)](https://github.com/solcreek/d1-schema)
+[![license](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![zero deps](https://img.shields.io/badge/dependencies-0-green)](package.json)
+
 Declarative schema for Cloudflare D1.
 Define tables in code. Auto-created on first use.
 No migration files. No CLI. No schema config.
