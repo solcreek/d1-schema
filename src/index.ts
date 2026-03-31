@@ -114,4 +114,5 @@ export async function define(
 }
 
 export { D1SchemaError } from "./reconcile.js";
+export { column } from "./column.js";
 export type { SchemaDefinition, DefineOptions } from "./types.js";
