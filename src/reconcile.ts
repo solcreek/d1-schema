@@ -5,7 +5,7 @@ import type {
   DdlOperation,
 } from "./types.js";
 import { parseTableDef } from "./parse.js";
-import { buildCreateTable, buildAddColumn } from "./ddl.js";
+import { buildCreateTable, buildAddColumn, escapeIdent } from "./ddl.js";
 
 /**
  * Compute the list of DDL operations needed to reconcile the desired schema
@@ -23,7 +23,7 @@ export async function computeOperations(
 
     // Check if table exists
     const existing = await db
-      .prepare(`PRAGMA table_info("${tableName}")`)
+      .prepare(`PRAGMA table_info(${escapeIdent(tableName)})`)
       .all<PragmaColumnInfo>();
 
     if (!existing.results || existing.results.length === 0) {

@@ -1,6 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { buildCreateTable, buildAddColumn } from "../src/ddl.js";
+import { buildCreateTable, buildAddColumn, escapeIdent } from "../src/ddl.js";
 import { parseColumnDef } from "../src/parse.js";
+
+describe("escapeIdent", () => {
+  it("wraps name in double quotes", () => {
+    expect(escapeIdent("users")).toBe('"users"');
+  });
+
+  it("escapes internal double quotes by doubling", () => {
+    expect(escapeIdent('my"table')).toBe('"my""table"');
+  });
+
+  it("handles SQL keywords", () => {
+    expect(escapeIdent("select")).toBe('"select"');
+    expect(escapeIdent("order")).toBe('"order"');
+  });
+
+  it("handles names with spaces", () => {
+    expect(escapeIdent("my table")).toBe('"my table"');
+  });
+
+  it("handles empty string", () => {
+    expect(escapeIdent("")).toBe('""');
+  });
+});
 
 describe("buildCreateTable", () => {
   it("builds basic CREATE TABLE", () => {
