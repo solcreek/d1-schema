@@ -156,6 +156,77 @@ describe("Column type drift detection", () => {
   });
 });
 
+describe("Constraint drift detection", () => {
+  it("warns when DB column is nullable but schema says NOT NULL", async () => {
+    await db.prepare("CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT)").run();
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", name: "text not null" } });
+
+    console.warn = origWarn;
+    expect(warnings.some((w) => w.includes("NOT NULL") && w.includes("name"))).toBe(true);
+  });
+
+  it("warns when DB has NOT NULL but schema allows NULL", async () => {
+    await db.prepare("CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT NOT NULL)").run();
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", name: "text" } });
+
+    console.warn = origWarn;
+    expect(warnings.some((w) => w.includes("NOT NULL") && w.includes("name"))).toBe(true);
+  });
+
+  it("warns when default values differ", async () => {
+    await db.prepare("CREATE TABLE t (id TEXT PRIMARY KEY, status TEXT DEFAULT 'active')").run();
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", status: "text default 'inactive'" } });
+
+    console.warn = origWarn;
+    expect(warnings.some((w) => w.includes("default mismatch") && w.includes("status"))).toBe(true);
+  });
+
+  it("does not warn when constraints match", async () => {
+    await define(db, {
+      t: { id: "text primary key", name: "text not null", count: "integer default 0" },
+    });
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, {
+      t: { id: "text primary key", name: "text not null", count: "integer default 0" },
+    });
+
+    console.warn = origWarn;
+    expect(warnings.filter((w) => w.includes("mismatch"))).toHaveLength(0);
+  });
+
+  it("does not warn about NOT NULL on primary key columns", async () => {
+    await db.prepare("CREATE TABLE t (id TEXT PRIMARY KEY, name TEXT NOT NULL)").run();
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", name: "text not null" } });
+
+    console.warn = origWarn;
+    expect(warnings.filter((w) => w.includes("id") && w.includes("NOT NULL"))).toHaveLength(0);
+  });
+});
+
 describe("Column type affinity", () => {
   it("handles all SQLite types", async () => {
     await define(db, {

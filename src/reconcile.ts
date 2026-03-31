@@ -76,13 +76,42 @@ export async function computeOperations(
 
     // Check for type/constraint drift on existing columns
     for (const col of desired) {
-      const existing_col = existingMap.get(col.name);
-      if (existing_col) {
-        // Type mismatch detection
-        if (existing_col.type.toUpperCase() !== col.type.toUpperCase()) {
+      const ec = existingMap.get(col.name);
+      if (!ec) continue;
+
+      // Type mismatch
+      if (ec.type.toUpperCase() !== col.type.toUpperCase()) {
+        warnings.push(
+          `Column "${tableName}.${col.name}" type mismatch: DB has ${ec.type}, schema says ${col.type}. ` +
+            `d1-schema will not alter column types.`,
+        );
+      }
+
+      // NOT NULL mismatch
+      const dbNotNull = ec.notnull === 1 || ec.pk > 0;
+      if (col.notNull && !dbNotNull) {
+        warnings.push(
+          `Column "${tableName}.${col.name}" constraint mismatch: schema says NOT NULL but DB allows NULL. ` +
+            `d1-schema will not alter existing constraints.`,
+        );
+      } else if (!col.notNull && dbNotNull && ec.pk === 0) {
+        warnings.push(
+          `Column "${tableName}.${col.name}" constraint mismatch: DB has NOT NULL but schema allows NULL. ` +
+            `d1-schema will not alter existing constraints.`,
+        );
+      }
+
+      // Default mismatch (compare string representations)
+      const dbDefault = ec.dflt_value;
+      const schemaDefault = col.defaultValue ?? null;
+      if (dbDefault !== schemaDefault && dbDefault !== null && schemaDefault !== undefined) {
+        // Normalize: DB might store '0' while schema says 0
+        const dbNorm = String(dbDefault).replace(/^'(.*)'$/, "$1");
+        const schemaNorm = String(schemaDefault).replace(/^'(.*)'$/, "$1");
+        if (dbNorm !== schemaNorm) {
           warnings.push(
-            `Column "${tableName}.${col.name}" type mismatch: DB has ${existing_col.type}, schema says ${col.type}. ` +
-              `d1-schema will not alter column types.`,
+            `Column "${tableName}.${col.name}" default mismatch: DB has ${dbDefault}, schema says ${schemaDefault}. ` +
+              `d1-schema will not alter existing defaults.`,
           );
         }
       }
