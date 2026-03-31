@@ -426,10 +426,8 @@ describe("Scenario: Tables not in define() are untouched", () => {
 
 describe("Scenario: Edge cases", () => {
   it("handles empty schema", async () => {
+    // Should not throw — no tables to create, no DDL to run
     await define(db, {});
-    // Should not throw, should create meta table only
-    const meta = await db.prepare("SELECT * FROM _d1_schema_meta").all();
-    expect(meta.results).toBeDefined();
   });
 
   it("handles table with single column (just PK)", async () => {

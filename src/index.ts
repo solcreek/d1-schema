@@ -27,8 +27,7 @@ import {
   D1SchemaError,
 } from "./reconcile.js";
 
-// Internal tables for tracking schema state
-const ENSURE_META = `CREATE TABLE IF NOT EXISTS _d1_schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
+// Internal table for schema change log (audit trail)
 const ENSURE_LOG = `CREATE TABLE IF NOT EXISTS _d1_schema_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   table_name TEXT NOT NULL,
@@ -38,9 +37,10 @@ const ENSURE_LOG = `CREATE TABLE IF NOT EXISTS _d1_schema_log (
   created_at TEXT DEFAULT (datetime('now'))
 )`;
 
-// In-memory cache: skip DB query entirely for unchanged schemas within the same isolate.
-// Uses WeakMap keyed by D1Database object — supports multiple databases in the same Worker.
-// Cleared automatically when the Worker isolate is evicted (new deploy = fresh isolate).
+// In-memory cache: keyed by D1Database object → schema hash.
+// Same isolate + same schema + same DB = zero DB queries (~0.01ms).
+// New isolate after deploy = fresh cache, runs PRAGMA diff (~3-5ms).
+// All DDL is idempotent, so redundant diffs are safe.
 const _cache = new WeakMap<object, string>();
 
 /**
@@ -48,8 +48,8 @@ const _cache = new WeakMap<object, string>();
  *
  * Performance:
  * - Same isolate, same schema: ~0.01ms (in-memory hash match, zero DB queries)
- * - Same isolate, schema changed: ~1-5ms (DB diff + DDL)
- * - New isolate (after deploy): ~1ms (one DB query to check hash)
+ * - New isolate or schema changed: ~3-5ms (PRAGMA diff + idempotent DDL)
+ * - No per-request DB overhead — zero extra queries on the hot path
  *
  * @param db - D1Database binding from env
  * @param schema - Table definitions: { tableName: { columnName: "sql column def" } }
@@ -75,23 +75,7 @@ export async function define(
     return; // ~0.01ms — zero DB queries
   }
 
-  // Ensure internal tables exist
-  await db.prepare(ENSURE_META).run();
-
-  // Fast path: compare hash with DB
-  const stored = await db
-    .prepare(`SELECT value FROM _d1_schema_meta WHERE key = 'schema_hash'`)
-    .first<{ value: string }>();
-
-  if (stored?.value === currentHash) {
-    _cache.set(db, currentHash); // Cache for subsequent requests in this isolate
-    return;
-  }
-
-  // Ensure log table exists (only needed on schema change)
-  await db.prepare(ENSURE_LOG).run();
-
-  // Compute diff
+  // Cold path: compute diff via PRAGMA and apply idempotent DDL
   const { operations, warnings } = await computeOperations(db, schema);
 
   // Log warnings
@@ -100,14 +84,14 @@ export async function define(
   }
 
   if (operations.length === 0) {
-    // No DDL needed — just update hash
-    await upsertHash(db, currentHash);
+    // Schema already matches DB — cache and return
     _cache.set(db, currentHash);
     return;
   }
 
   if (mode === "warn") {
     // Dry-run: log what would happen
+    await db.prepare(ENSURE_LOG).run();
     for (const op of operations) {
       console.warn(`[d1-schema] Would execute: ${op.ddl}`);
     }
@@ -115,27 +99,23 @@ export async function define(
     return;
   }
 
-  // Apply
+  // Apply idempotent DDL
   await applyOperations(db, operations);
-  await logOperations(db, operations, true);
-  await upsertHash(db, currentHash);
-  _cache.set(db, currentHash); // Cache for subsequent requests
-}
 
-async function upsertHash(db: D1Database, hash: string): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO _d1_schema_meta (key, value) VALUES ('schema_hash', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .bind(hash)
-    .run();
+  // Log operations (best-effort — don't fail if log table can't be created)
+  try {
+    await db.prepare(ENSURE_LOG).run();
+    await logOperations(db, operations, true);
+  } catch {
+    // Log table failure is non-fatal
+  }
+
+  _cache.set(db, currentHash);
 }
 
 /** @internal — reset in-memory cache (for testing only) */
 export function _resetCache(): void {
-  // WeakMap doesn't have clear(), but in tests each beforeEach creates a new db object
-  // so old entries are automatically GC'd. This is a no-op but kept for API compatibility.
+  // WeakMap auto-clears when db objects are GC'd (each test creates new db)
 }
 
 export { D1SchemaError } from "./reconcile.js";
