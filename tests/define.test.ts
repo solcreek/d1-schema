@@ -191,22 +191,23 @@ describe("define() — in-memory cache", () => {
     expect(cols.results.map((c: any) => c.name)).toContain("name");
   });
 
-  it("resets cache with _resetCache()", async () => {
+  it("new db object has no cache (simulates new isolate)", async () => {
     const schema = { t: { id: "text primary key" } };
     await define(db, schema);
 
-    _resetCache();
+    // Create a fresh db (simulates new Worker isolate after deploy)
+    const db2 = createMockD1();
 
-    // After reset, must query DB again (but schema matches → no DDL)
     let queryCount = 0;
-    const originalPrepare = db.prepare.bind(db);
-    db.prepare = (sql: string) => {
+    const originalPrepare = db2.prepare.bind(db2);
+    db2.prepare = (sql: string) => {
       queryCount++;
       return originalPrepare(sql);
     };
 
-    await define(db, schema);
-    expect(queryCount).toBeGreaterThan(0); // Had to query DB
+    // Fresh db object → no cache → must query DB
+    await define(db2, schema);
+    expect(queryCount).toBeGreaterThan(0);
   });
 });
 

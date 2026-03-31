@@ -256,17 +256,42 @@ describe("Reserved and special column names", () => {
 // ─── Multiple concurrent defines (idempotency) ──────────────────────────────
 
 describe("Concurrent define() calls (idempotency)", () => {
-  it("handles two defines adding the same column simultaneously", async () => {
+  it("handles two defines adding the same column sequentially", async () => {
     await define(db, { t: { id: "text primary key" } });
 
-    // Simulate two Workers both seeing the old schema and trying to add the same column
-    // First one succeeds, second should not fail
     await define(db, { t: { id: "text primary key", name: "text" } });
     await define(db, { t: { id: "text primary key", name: "text" } }); // idempotent
 
     const cols = await getColumns("t");
     const nameCount = cols.filter((c) => c.name === "name").length;
-    expect(nameCount).toBe(1); // not duplicated
+    expect(nameCount).toBe(1);
+  });
+
+  it("survives concurrent ADD COLUMN race (duplicate column error)", async () => {
+    // Simulate: Worker A created the table, Worker B hasn't cached yet
+    await define(db, { t: { id: "text primary key" } });
+
+    // Worker A adds column (succeeds)
+    await db.prepare('ALTER TABLE "t" ADD COLUMN "name" TEXT').run();
+
+    // Worker B tries to add the same column via define() — should NOT crash
+    // (d1-schema catches "duplicate column name" and continues)
+    await define(db, { t: { id: "text primary key", name: "text" } });
+
+    const cols = await getColumns("t");
+    expect(cols.map((c) => c.name)).toContain("name");
+  });
+
+  it("survives concurrent CREATE TABLE race (table already exists)", async () => {
+    // Worker A creates table directly
+    await db.prepare('CREATE TABLE "t" (id TEXT PRIMARY KEY)').run();
+
+    // Worker B tries via define() — CREATE TABLE IF NOT EXISTS handles this,
+    // but test ensures the full flow doesn't crash
+    await define(db, { t: { id: "text primary key" } });
+
+    const cols = await getColumns("t");
+    expect(cols.map((c) => c.name)).toContain("id");
   });
 });
 

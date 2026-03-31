@@ -39,9 +39,9 @@ const ENSURE_LOG = `CREATE TABLE IF NOT EXISTS _d1_schema_log (
 )`;
 
 // In-memory cache: skip DB query entirely for unchanged schemas within the same isolate.
-// Keyed by schema hash — if the hash matches, no DB roundtrip needed.
+// Uses WeakMap keyed by D1Database object — supports multiple databases in the same Worker.
 // Cleared automatically when the Worker isolate is evicted (new deploy = fresh isolate).
-let _cachedHash: string | null = null;
+const _cache = new WeakMap<object, string>();
 
 /**
  * Define your D1 database schema. Tables are auto-created or altered on first use.
@@ -69,9 +69,9 @@ export async function define(
 
   if (mode === "off") return;
 
-  // Fastest path: in-memory cache hit (same isolate, same schema)
+  // Fastest path: in-memory cache hit (same isolate, same schema, same DB)
   const currentHash = await hashSchema(schema);
-  if (_cachedHash === currentHash) {
+  if (_cache.get(db) === currentHash) {
     return; // ~0.01ms — zero DB queries
   }
 
@@ -84,7 +84,7 @@ export async function define(
     .first<{ value: string }>();
 
   if (stored?.value === currentHash) {
-    _cachedHash = currentHash; // Cache for subsequent requests in this isolate
+    _cache.set(db, currentHash); // Cache for subsequent requests in this isolate
     return;
   }
 
@@ -102,7 +102,7 @@ export async function define(
   if (operations.length === 0) {
     // No DDL needed — just update hash
     await upsertHash(db, currentHash);
-    _cachedHash = currentHash;
+    _cache.set(db, currentHash);
     return;
   }
 
@@ -119,7 +119,7 @@ export async function define(
   await applyOperations(db, operations);
   await logOperations(db, operations, true);
   await upsertHash(db, currentHash);
-  _cachedHash = currentHash; // Cache for subsequent requests
+  _cache.set(db, currentHash); // Cache for subsequent requests
 }
 
 async function upsertHash(db: D1Database, hash: string): Promise<void> {
@@ -134,7 +134,8 @@ async function upsertHash(db: D1Database, hash: string): Promise<void> {
 
 /** @internal — reset in-memory cache (for testing only) */
 export function _resetCache(): void {
-  _cachedHash = null;
+  // WeakMap doesn't have clear(), but in tests each beforeEach creates a new db object
+  // so old entries are automatically GC'd. This is a no-op but kept for API compatibility.
 }
 
 export { D1SchemaError } from "./reconcile.js";

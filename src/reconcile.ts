@@ -91,13 +91,29 @@ export async function computeOperations(
 
 /**
  * Apply DDL operations to the database.
+ * Handles concurrent execution safely — if another Worker already applied
+ * the same change, the "duplicate column name" or "table already exists"
+ * error is caught and treated as success.
  */
 export async function applyOperations(
   db: D1Database,
   operations: DdlOperation[],
 ): Promise<void> {
   for (const op of operations) {
-    await db.prepare(op.ddl).run();
+    try {
+      await db.prepare(op.ddl).run();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Concurrent Worker already applied this — safe to ignore
+      if (
+        msg.includes("duplicate column name") ||
+        msg.includes("table already exists") ||
+        msg.includes("already exists")
+      ) {
+        continue;
+      }
+      throw err;
+    }
   }
 }
 
