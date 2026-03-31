@@ -1,0 +1,49 @@
+{
+  "name": "d1-schema",
+  "version": "0.1.0",
+  "description": "Declarative schema for Cloudflare D1. Define tables in code, auto-created on first use.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cloudflare",
+    "d1",
+    "schema",
+    "migration",
+    "sqlite",
+    "workers",
+    "declarative",
+    "zero-config"
+  ],
+  "author": "SolCreek",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/solcreek/d1-schema",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/solcreek/d1-schema.git"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250313.0",
+    "better-sqlite3": "^11.0.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.1"
+  }
+}
