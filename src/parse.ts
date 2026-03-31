@@ -10,8 +10,8 @@ import type { ParsedColumn } from "./types.js";
  *   "text default (datetime('now'))" → { type: "TEXT", defaultValue: "(datetime('now'))", ... }
  */
 export function parseColumnDef(name: string, def: string): ParsedColumn {
-  const upper = def.toUpperCase();
   const normalized = def.replace(/\s+/g, " ").trim();
+  const upper = normalized.toUpperCase();
 
   // Extract type (first word)
   const typeMatch = normalized.match(/^(\w+)/);
@@ -22,11 +22,28 @@ export function parseColumnDef(name: string, def: string): ParsedColumn {
   const notNull = upper.includes("NOT NULL") || primaryKey; // PK implies NOT NULL
   const unique = upper.includes("UNIQUE") || primaryKey;
 
-  // Extract default value — handles both simple and parenthesized defaults
+  // Extract default value — handles nested parentheses, quoted strings, and simple values
   let defaultValue: string | undefined;
-  const defaultMatch = normalized.match(/DEFAULT\s+(\([^)]+\)|'[^']*'|"[^"]*"|\S+)/i);
-  if (defaultMatch) {
-    defaultValue = defaultMatch[1];
+  const defaultIdx = upper.indexOf("DEFAULT ");
+  if (defaultIdx !== -1) {
+    const afterDefault = normalized.slice(defaultIdx + 8).trim();
+    if (afterDefault.startsWith("(")) {
+      // Parenthesized: find matching closing paren
+      let depth = 0;
+      let end = 0;
+      for (let i = 0; i < afterDefault.length; i++) {
+        if (afterDefault[i] === "(") depth++;
+        if (afterDefault[i] === ")") depth--;
+        if (depth === 0) { end = i + 1; break; }
+      }
+      defaultValue = afterDefault.slice(0, end);
+    } else if (afterDefault.startsWith("'")) {
+      const endQuote = afterDefault.indexOf("'", 1);
+      defaultValue = afterDefault.slice(0, endQuote + 1);
+    } else {
+      const spaceIdx = afterDefault.indexOf(" ");
+      defaultValue = spaceIdx === -1 ? afterDefault : afterDefault.slice(0, spaceIdx);
+    }
   }
 
   return { name, type, notNull, unique, primaryKey, defaultValue };
