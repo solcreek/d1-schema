@@ -1,7 +1,7 @@
 # d1-schema
 
 [![npm](https://img.shields.io/npm/v/d1-schema)](https://www.npmjs.com/package/d1-schema)
-[![tests](https://img.shields.io/badge/tests-102%20passed-brightgreen)](https://github.com/solcreek/d1-schema)
+[![tests](https://img.shields.io/badge/tests-116%20passed-brightgreen)](https://github.com/solcreek/d1-schema)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![zero deps](https://img.shields.io/badge/dependencies-0-green)](package.json)
 
@@ -135,24 +135,41 @@ Foreign keys (`references`) are passed through to SQLite as-is. D1 enforces them
 
 ## Column Definition Syntax
 
-Column definitions are standard SQLite column constraints:
+Two equivalent syntaxes — use whichever you prefer, mix freely:
+
+### Raw strings (zero abstraction)
 
 ```ts
 {
-  // Types
-  id:         "text primary key",          // TEXT, INTEGER, REAL, BLOB
+  id:         "text primary key",
   count:      "integer default 0",
   price:      "real not null",
   data:       "blob",
-
-  // Constraints
   email:      "text unique not null",
   role:       "text not null default 'member'",
   created_at: "text default (datetime('now'))",
-
-  // Foreign keys
   user_id:    "text not null references users(id)",
 }
+```
+
+### Typed helpers (optional, compile-time type checking)
+
+```ts
+import { column } from "d1-schema";
+
+{
+  id:         column.text("primary key"),
+  count:      column.integer("default 0"),
+  price:      column.real("not null"),
+  data:       column.blob(),
+  email:      column.text("unique not null"),
+  role:       column.text("not null default 'member'"),
+  created_at: column.text("default (datetime('now'))"),
+  user_id:    column.text("not null references users(id)"),
+}
+```
+
+`column.text()`, `column.integer()`, `column.real()`, `column.blob()` produce the same strings — they just ensure valid SQLite types at compile time. The constraint string is appended as-is.
 ```
 
 ## Schema Evolution
