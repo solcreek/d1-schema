@@ -53,6 +53,19 @@ export async function computeOperations(
           );
         }
 
+        // SQLite ALTER TABLE ADD COLUMN only allows constant defaults.
+        // Function expressions like datetime('now') are not allowed.
+        if (col.defaultValue && col.defaultValue.startsWith("(")) {
+          throw new D1SchemaError(
+            `Cannot add column "${col.name}" to existing table "${tableName}" with expression default ${col.defaultValue}.\n\n` +
+              `  SQLite does not allow ALTER TABLE ADD COLUMN with non-constant defaults.\n` +
+              `  Options:\n` +
+              `  1. Use a constant default instead:  "${col.name}": "${col.type.toLowerCase()} default ''"\n` +
+              `  2. Make it nullable without default:  "${col.name}": "${col.type.toLowerCase()}"\n` +
+              `  3. Include the column in the initial schema (CREATE TABLE supports expression defaults)`,
+          );
+        }
+
         operations.push({
           table: tableName,
           action: "ADD_COLUMN",
