@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { define, D1SchemaError } from "../src/index.js";
+import { define, D1SchemaError, _resetCache } from "../src/index.js";
 import { createMockD1 } from "./d1-mock.js";
 
 let db: D1Database;
 
 beforeEach(() => {
   db = createMockD1();
+  _resetCache();
 });
 
 describe("define() — table creation", () => {
@@ -150,6 +151,62 @@ describe("define() — fast skip", () => {
     // Data should still be there
     const row = await db.prepare("SELECT * FROM todos WHERE id = '1'").first<any>();
     expect(row.text).toBe("test");
+  });
+});
+
+describe("define() — in-memory cache", () => {
+  it("uses in-memory cache after first DB check (zero DB queries)", async () => {
+    const schema = {
+      todos: { id: "text primary key", text: "text not null" },
+    };
+
+    // First call: creates table + caches hash
+    await define(db, schema);
+
+    // Replace db.prepare with a spy to verify no DB queries on cached path
+    let queryCount = 0;
+    const originalPrepare = db.prepare.bind(db);
+    db.prepare = (sql: string) => {
+      queryCount++;
+      return originalPrepare(sql);
+    };
+
+    // Second call: should use in-memory cache, zero DB queries
+    await define(db, schema);
+    expect(queryCount).toBe(0);
+
+    // Third call: still cached
+    await define(db, schema);
+    expect(queryCount).toBe(0);
+  });
+
+  it("invalidates cache when schema changes", async () => {
+    await define(db, { t: { id: "text primary key" } });
+
+    // Schema changed — cache should miss, DB query needed
+    await define(db, { t: { id: "text primary key", name: "text" } });
+
+    // Verify new column was added
+    const cols = await db.prepare('PRAGMA table_info("t")').all<any>();
+    expect(cols.results.map((c: any) => c.name)).toContain("name");
+  });
+
+  it("resets cache with _resetCache()", async () => {
+    const schema = { t: { id: "text primary key" } };
+    await define(db, schema);
+
+    _resetCache();
+
+    // After reset, must query DB again (but schema matches → no DDL)
+    let queryCount = 0;
+    const originalPrepare = db.prepare.bind(db);
+    db.prepare = (sql: string) => {
+      queryCount++;
+      return originalPrepare(sql);
+    };
+
+    await define(db, schema);
+    expect(queryCount).toBeGreaterThan(0); // Had to query DB
   });
 });
 

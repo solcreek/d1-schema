@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { define, D1SchemaError } from "../src/index.js";
+import { define, D1SchemaError, _resetCache } from "../src/index.js";
 import { createMockD1 } from "./d1-mock.js";
 
 /**
@@ -11,6 +11,7 @@ let db: D1Database;
 
 beforeEach(() => {
   db = createMockD1();
+  _resetCache();
 });
 
 // Helper: get actual table columns from SQLite

@@ -38,8 +38,18 @@ const ENSURE_LOG = `CREATE TABLE IF NOT EXISTS _d1_schema_log (
   created_at TEXT DEFAULT (datetime('now'))
 )`;
 
+// In-memory cache: skip DB query entirely for unchanged schemas within the same isolate.
+// Keyed by schema hash — if the hash matches, no DB roundtrip needed.
+// Cleared automatically when the Worker isolate is evicted (new deploy = fresh isolate).
+let _cachedHash: string | null = null;
+
 /**
  * Define your D1 database schema. Tables are auto-created or altered on first use.
+ *
+ * Performance:
+ * - Same isolate, same schema: ~0.01ms (in-memory hash match, zero DB queries)
+ * - Same isolate, schema changed: ~1-5ms (DB diff + DDL)
+ * - New isolate (after deploy): ~1ms (one DB query to check hash)
  *
  * @param db - D1Database binding from env
  * @param schema - Table definitions: { tableName: { columnName: "sql column def" } }
@@ -59,17 +69,23 @@ export async function define(
 
   if (mode === "off") return;
 
+  // Fastest path: in-memory cache hit (same isolate, same schema)
+  const currentHash = await hashSchema(schema);
+  if (_cachedHash === currentHash) {
+    return; // ~0.01ms — zero DB queries
+  }
+
   // Ensure internal tables exist
   await db.prepare(ENSURE_META).run();
 
-  // Fast path: compare hash
-  const currentHash = await hashSchema(schema);
+  // Fast path: compare hash with DB
   const stored = await db
     .prepare(`SELECT value FROM _d1_schema_meta WHERE key = 'schema_hash'`)
     .first<{ value: string }>();
 
   if (stored?.value === currentHash) {
-    return; // Schema unchanged — skip reconciliation
+    _cachedHash = currentHash; // Cache for subsequent requests in this isolate
+    return;
   }
 
   // Ensure log table exists (only needed on schema change)
@@ -86,6 +102,7 @@ export async function define(
   if (operations.length === 0) {
     // No DDL needed — just update hash
     await upsertHash(db, currentHash);
+    _cachedHash = currentHash;
     return;
   }
 
@@ -102,6 +119,7 @@ export async function define(
   await applyOperations(db, operations);
   await logOperations(db, operations, true);
   await upsertHash(db, currentHash);
+  _cachedHash = currentHash; // Cache for subsequent requests
 }
 
 async function upsertHash(db: D1Database, hash: string): Promise<void> {
@@ -112,6 +130,11 @@ async function upsertHash(db: D1Database, hash: string): Promise<void> {
     )
     .bind(hash)
     .run();
+}
+
+/** @internal — reset in-memory cache (for testing only) */
+export function _resetCache(): void {
+  _cachedHash = null;
 }
 
 export { D1SchemaError } from "./reconcile.js";
