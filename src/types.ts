@@ -32,6 +32,22 @@ export interface PragmaColumnInfo {
   pk: number;
 }
 
+/** Result from PRAGMA index_list(). */
+export interface PragmaIndexInfo {
+  seq: number;
+  name: string;
+  unique: number;
+  origin: string; // "c" = CREATE INDEX, "u" = UNIQUE constraint, "pk" = PRIMARY KEY
+  partial: number;
+}
+
+/** Result from PRAGMA index_info(). */
+export interface PragmaIndexColumnInfo {
+  seqno: number;
+  cid: number;
+  name: string;
+}
+
 /** A DDL operation to apply. */
 export interface DdlOperation {
   table: string;

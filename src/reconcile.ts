@@ -2,6 +2,8 @@ import type {
   SchemaDefinition,
   ParsedColumn,
   PragmaColumnInfo,
+  PragmaIndexInfo,
+  PragmaIndexColumnInfo,
   DdlOperation,
 } from "./types.js";
 import { parseTableDef } from "./parse.js";
@@ -122,6 +124,42 @@ export async function computeOperations(
               `d1-schema will not alter existing defaults.`,
           );
         }
+      }
+    }
+
+    // UNIQUE constraint drift — check via PRAGMA index_list + index_info
+    const indexList = await db
+      .prepare(`PRAGMA index_list(${escapeIdent(tableName)})`)
+      .all<PragmaIndexInfo>();
+
+    const dbUniqueColumns = new Set<string>();
+    if (indexList.results) {
+      for (const idx of indexList.results) {
+        if (idx.unique && idx.origin === "u") {
+          // Single-column unique constraint
+          const idxInfo = await db
+            .prepare(`PRAGMA index_info(${escapeIdent(idx.name)})`)
+            .all<PragmaIndexColumnInfo>();
+          if (idxInfo.results?.length === 1) {
+            dbUniqueColumns.add(idxInfo.results[0].name);
+          }
+        }
+      }
+    }
+
+    for (const col of desired) {
+      if (col.primaryKey) continue; // PK implies unique
+      const hasDbUnique = dbUniqueColumns.has(col.name);
+      if (col.unique && !hasDbUnique) {
+        warnings.push(
+          `Column "${tableName}.${col.name}" constraint mismatch: schema says UNIQUE but DB has no unique constraint. ` +
+            `d1-schema cannot add UNIQUE to existing columns.`,
+        );
+      } else if (!col.unique && hasDbUnique) {
+        warnings.push(
+          `Column "${tableName}.${col.name}" constraint mismatch: DB has UNIQUE but schema does not declare it. ` +
+            `d1-schema will not remove constraints.`,
+        );
       }
     }
 

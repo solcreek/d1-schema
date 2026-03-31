@@ -225,6 +225,45 @@ describe("Constraint drift detection", () => {
     console.warn = origWarn;
     expect(warnings.filter((w) => w.includes("id") && w.includes("NOT NULL"))).toHaveLength(0);
   });
+
+  it("warns when schema says UNIQUE but DB has no unique constraint", async () => {
+    await db.prepare("CREATE TABLE t (id TEXT PRIMARY KEY, email TEXT)").run();
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", email: "text unique" } });
+
+    console.warn = origWarn;
+    expect(warnings.some((w) => w.includes("UNIQUE") && w.includes("email"))).toBe(true);
+  });
+
+  it("warns when DB has UNIQUE but schema does not", async () => {
+    await db.prepare("CREATE TABLE t (id TEXT PRIMARY KEY, email TEXT UNIQUE)").run();
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", email: "text" } });
+
+    console.warn = origWarn;
+    expect(warnings.some((w) => w.includes("UNIQUE") && w.includes("email"))).toBe(true);
+  });
+
+  it("does not warn when UNIQUE matches", async () => {
+    await define(db, { t: { id: "text primary key", email: "text unique not null" } });
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", email: "text unique not null" } });
+
+    console.warn = origWarn;
+    expect(warnings.filter((w) => w.includes("UNIQUE"))).toHaveLength(0);
+  });
 });
 
 describe("Column type affinity", () => {
