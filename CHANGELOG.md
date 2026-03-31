@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (2026-03-31)
+
+### Added
+- **UNIQUE constraint drift detection**: warns when schema declares UNIQUE but DB doesn't have it, and vice versa — queries PRAGMA index_list + index_info
+- **Index support**: `_indexes: ["author_id", "status, created_at"]` — auto-creates indexes with deterministic naming (`idx_{table}_{cols}`)
+- **`snapshot()` function**: generates SQL migration file from schema definition — graduation path from `define()` to versioned migration files
+
+### Stats
+- 134 tests across 10 files
+
 ## 0.3.0 (2026-03-31)
 
 ### Added
