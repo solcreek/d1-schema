@@ -74,6 +74,20 @@ export async function computeOperations(
       }
     }
 
+    // Check for type/constraint drift on existing columns
+    for (const col of desired) {
+      const existing_col = existingMap.get(col.name);
+      if (existing_col) {
+        // Type mismatch detection
+        if (existing_col.type.toUpperCase() !== col.type.toUpperCase()) {
+          warnings.push(
+            `Column "${tableName}.${col.name}" type mismatch: DB has ${existing_col.type}, schema says ${col.type}. ` +
+              `d1-schema will not alter column types.`,
+          );
+        }
+      }
+    }
+
     // Check for removed columns (warn, don't drop)
     const desiredNames = new Set(desired.map((c) => c.name));
     for (const [name] of existingMap) {

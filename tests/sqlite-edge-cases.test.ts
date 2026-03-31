@@ -124,6 +124,39 @@ describe("CREATE TABLE capabilities (things only allowed on new tables)", () => 
 
 // ─── Column type affinity ──────────────────────────────────────────────────
 
+describe("Column type drift detection", () => {
+  it("warns when DB column type differs from schema", async () => {
+    // Create table with INTEGER column
+    await db.prepare("CREATE TABLE t (id TEXT PRIMARY KEY, count INTEGER)").run();
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    // define() says TEXT but DB has INTEGER
+    await define(db, {
+      t: { id: "text primary key", count: "text" },
+    });
+
+    console.warn = origWarn;
+
+    expect(warnings.some((w) => w.includes("type mismatch") && w.includes("count"))).toBe(true);
+  });
+
+  it("does not warn when types match", async () => {
+    await define(db, { t: { id: "text primary key", name: "text not null" } });
+
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (msg: string) => warnings.push(msg);
+
+    await define(db, { t: { id: "text primary key", name: "text not null" } });
+
+    console.warn = origWarn;
+    expect(warnings.filter((w) => w.includes("type mismatch"))).toHaveLength(0);
+  });
+});
+
 describe("Column type affinity", () => {
   it("handles all SQLite types", async () => {
     await define(db, {
