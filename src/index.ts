@@ -113,10 +113,5 @@ export async function define(
   _cache.set(db, currentHash);
 }
 
-/** @internal — reset in-memory cache (for testing only) */
-export function _resetCache(): void {
-  // WeakMap auto-clears when db objects are GC'd (each test creates new db)
-}
-
 export { D1SchemaError } from "./reconcile.js";
 export type { SchemaDefinition, DefineOptions } from "./types.js";
