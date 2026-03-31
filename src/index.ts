@@ -115,4 +115,5 @@ export async function define(
 
 export { D1SchemaError } from "./reconcile.js";
 export { column } from "./column.js";
+export { snapshot } from "./snapshot.js";
 export type { SchemaDefinition, DefineOptions } from "./types.js";
